@@ -1,0 +1,92 @@
+
+image:
+  name: hashicorp/terraform:light
+  entrypoint:
+    - '/usr/bin/env'
+    - 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+    - 'AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}' 
+    - 'AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}' 
+    - 'AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}'
+
+variables:
+  PLAN: terraform/plan.tfplan
+
+cache:
+  paths:
+    - .terraform
+
+before_script:
+  - echo $CI_COMMIT_BRANCH
+  - echo ${DOCKER_HUB_PASS} | docker login -u ${DOCKER_HUB_USER} --password-stdin
+  - terraform --version
+
+stages:
+  - build
+  - init
+  - validate
+  - plan
+  - apply
+
+dockerbuild_publicapi:
+  # image: docker:latest
+  stage: build
+  # services:
+  #   - docker:dind  
+  script:
+    - cd go_frontend_api
+    - docker build -t sentible/sentible-container:public_api .
+    - docker push sentible/sentible-container:public_api
+  rules:
+    - if: $CI_COMMIT_BRANCH == "publicAPI"
+      changes:
+        - go_frontend_api/* 
+
+init: 
+  stage: init
+  script: 
+    - cd terraform
+    - terraform init
+  rules: 
+    - if: $CI_COMMIT_BRANCH == "terraform"
+      changes:
+        - terraform/* 
+
+validate:
+  stage: validate
+  script:
+    - cd terraform 
+    - terraform init
+    - terraform validate
+  rules: 
+    - if: $CI_COMMIT_BRANCH == "terraform"
+      changes:
+        - terraform/* 
+
+plan:
+  stage: plan
+  script:
+    - cd terraform
+    - terraform init
+    - terraform plan -out=plan.tfplan
+  artifacts:
+    name: plan
+    paths:
+      - $PLAN
+  rules: 
+    - if: $CI_COMMIT_BRANCH == "terraform"
+      changes:
+        - terraform/* 
+
+apply:
+  stage: apply
+  script:
+    - cd terraform
+    - terraform init
+    - terraform apply -input=false plan.tfplan
+  when: manual
+  rules: 
+    - if: $CI_COMMIT_BRANCH == "terraform"
+      changes:
+        - terraform/* 
+
+
